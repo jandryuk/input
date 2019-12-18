@@ -398,7 +398,8 @@ static void send_config(struct domain *d, int slot)
      * more than double that. */
     unsigned long keylimits[NBITS(KEY_OK)];
     struct msg_input_config *msg;
-    size_t msg_size = 0;
+    size_t msg_size;
+    size_t alloc_size;
     unsigned char *raw;
 
     /* QEMU is the only consumer. */
@@ -501,12 +502,13 @@ static void send_config(struct domain *d, int slot)
         }
     }
 
-    msg_size = sizeof (*msg)
-        + !!TEST_BIT(EV_ABS, eventtypes) * sizeof (abslimits)
-        + !!TEST_BIT(EV_REL, eventtypes) * sizeof (rellimits)
-        + !!TEST_BIT(EV_KEY, eventtypes) * sizeof (keylimits)
-        - sizeof (uint32_t);
-    msg = calloc(1, msg_size);
+    msg_size = sizeof(*msg) - sizeof(msg->c.bits);
+    /* Allocate the maximum size to silence "error: call to
+     * __builtin___memcpy_chk will always overflow destination buffer [-Werror]"
+     */
+    alloc_size = msg_size + sizeof (abslimits) + sizeof (rellimits)
+                 + sizeof (keylimits);
+    msg = calloc(1, alloc_size);
     if (!msg)
         fatal("calloc: %s.\n", strerror(errno));
 
@@ -529,14 +531,17 @@ static void send_config(struct domain *d, int slot)
     if (TEST_BIT(EV_ABS, eventtypes)) {
         memcpy(raw, abslimits, sizeof (abslimits));
         raw += sizeof (abslimits);
+        msg_size += sizeof (abslimits);
     }
     if (TEST_BIT(EV_REL, eventtypes)) {
         memcpy(raw, rellimits, sizeof (rellimits));
         raw += sizeof (rellimits);
+        msg_size += sizeof (rellimits);
     }
     if (TEST_BIT(EV_KEY, eventtypes)) {
         memcpy(raw, keylimits, sizeof (keylimits));
         raw += sizeof (keylimits);
+        msg_size += sizeof (keylimits);
     }
     /* Send to QEMU. */
     input_config(d->client, msg, msg_size);
